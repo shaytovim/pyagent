@@ -464,39 +464,90 @@ fi
 # =============================================
 # [4/6] Auto-Start (autologin + bash_profile)
 # =============================================
-step 4 "Configuring Auto-Start (autologin + bash_profile)"
+step 4 "Configuring Auto-Start (systemd service + autologin fallback)"
 
-# --- הסרת kiosk.service ישן אם קיים ---
-sudo systemctl disable kiosk.service 2>/dev/null
+# --- הסרת services ישנים ---
+sudo systemctl disable kiosk.service        2>/dev/null
+sudo systemctl disable advision-kiosk.service 2>/dev/null
 sudo rm -f /etc/systemd/system/kiosk.service
+sudo rm -f /etc/systemd/system/advision-kiosk.service
 sudo systemctl daemon-reload 2>/dev/null
 
-# --- autologin ל-tty1 עבור המשתמש הנוכחי ---
+# ─── UID של המשתמש (נדרש ל-XDG_RUNTIME_DIR) ───────────────
+PI_UID=$(id -u "$PI_USER")
+
+# ─── advision-kiosk.service ────────────────────────────────
+# מפעיל את הקיוסק ישירות דרך systemd — לפני שagetty כותב
+# כלום על המסך. cage תופסת את ה-DRM ב-exclusivity ומסתירה
+# כל טקסט קונסול.
+sudo tee /etc/systemd/system/advision-kiosk.service > /dev/null << SVCEOF
+[Unit]
+Description=Advision Digital Signage Kiosk
+Documentation=https://advision360.co.il
+After=systemd-logind.service
+After=plymouth-quit-wait.service
+Wants=plymouth-quit-wait.service
+
+[Service]
+User=$PI_USER
+PAMName=login
+StandardInput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Environment=XDG_RUNTIME_DIR=/run/user/$PI_UID
+Environment=HOME=$HOME_DIR
+WorkingDirectory=$HOME_DIR
+ExecStart=/usr/bin/python3 $HOME_DIR/$PY_FILE
+Restart=always
+RestartSec=5
+# כל הפלט עובר ללוג — שום דבר לא נכתב על המסך
+StandardOutput=append:$HOME_DIR/kiosk.log
+StandardError=append:$HOME_DIR/kiosk.log
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+sudo systemctl enable advision-kiosk.service
+sudo systemctl daemon-reload
+ok "advision-kiosk.service enabled (primary, starts after Plymouth)"
+
+# --- autologin ל-tty1 (fallback לSSH / debugging) ---
+# --noissue: אין הצגת /etc/issue (כולל "My IP address is...")
+# --noclear: שמירה על מסך Plymouth בזמן המעבר
 sudo mkdir -p /etc/systemd/system/getty@tty1.service.d/
 sudo tee /etc/systemd/system/getty@tty1.service.d/autologin.conf > /dev/null << EOF
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --autologin $PI_USER --noclear %I \$TERM
+ExecStart=-/sbin/agetty --autologin $PI_USER --noissue --noclear %I \$TERM
 Type=idle
 EOF
 sudo systemctl daemon-reload
-ok "Autologin configured for user: $PI_USER on tty1"
+ok "Autologin configured (fallback, --noissue suppresses IP banner)"
 
-# --- kiosk loop ב-~/.bash_profile ---
-# פועל רק על tty1 ישירות — לא ב-SSH ולא ב-Wayland קיים
+# --- kiosk loop ב-~/.bash_profile (fallback בלבד) ---
 cat > "$HOME_DIR/.bash_profile" << BPEOF
-# === Advision Kiosk Auto-Start ===
+# === Advision Kiosk — fallback launcher (tty1 only) ===
 [[ -f ~/.bashrc ]] && source ~/.bashrc
 
 if [ -z "\$WAYLAND_DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
-    sleep 3
+    # אם ה-service הראשי כבר פועל, אל תפעיל שוב
+    if systemctl is-active --quiet advision-kiosk.service 2>/dev/null; then
+        exit 0
+    fi
+    # נקה מסך מיידית + הסתר cursor (מסתיר כל שארית קונסול)
+    clear
+    printf '\033[?25l'
+    setterm --foreground black --background black 2>/dev/null || true
+    sleep 2
     while true; do
         /usr/bin/python3 $HOME_DIR/$PY_FILE >> $HOME_DIR/kiosk.log 2>&1
         sleep 5
     done
 fi
 BPEOF
-ok "Kiosk loop added to ~/.bash_profile (tty1 only, SSH-safe)"
+ok "~/.bash_profile configured (fallback, immediate screen-clear on login)"
 
 # --- passwordless sudo ---
 echo "$PI_USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/kiosk-nopasswd > /dev/null
@@ -517,7 +568,10 @@ sudo touch "$HOME_DIR/.hushlogin"
 printf '' | sudo tee /etc/motd         > /dev/null
 printf '' | sudo tee /etc/issue        > /dev/null
 printf '' | sudo tee /etc/issue.net    > /dev/null
-ok "Login messages suppressed (motd / issue)"
+# /etc/issue.d/ — קבצים דינמיים (כולל "My IP address is \4 \6")
+sudo rm -f /etc/issue.d/*.issue 2>/dev/null || true
+sudo mkdir -p /etc/issue.d/
+ok "Login messages suppressed (motd / issue / issue.d)"
 
 # ─── journald: ללא פלט לקונסול ─────────────
 sudo mkdir -p /etc/systemd/journald.conf.d/
@@ -748,7 +802,8 @@ if [ -f "$CMDLINE" ]; then
         "vt.global_cursor_default=0" \
         "systemd.show_status=false" \
         "plymouth.ignore-serial-consoles" \
-        "rd.systemd.show_status=false"
+        "rd.systemd.show_status=false" \
+        "console=tty3"
     do
         grep -q "$PARAM" "$CMDLINE" \
             || sudo sed -i "s/$/ $PARAM/" "$CMDLINE"
