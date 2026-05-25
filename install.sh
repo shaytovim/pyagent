@@ -504,11 +504,42 @@ sudo chmod 440 /etc/sudoers.d/kiosk-nopasswd
 ok "sudo passwordless configured for $PI_USER"
 
 # =============================================
-# [5/6] הגדרות תצוגה
+# [5/6] הגדרות תצוגה ודיכוי הודעות אתחול
 # =============================================
-step 5 "Configuring Display Settings"
+step 5 "Configuring Display & Suppressing Boot Messages"
+
+# כיבוי screen blanking
 sudo raspi-config nonint do_blanking 1
 ok "Screen blanking disabled"
+
+# ─── הסרת הודעות כניסה ─────────────────────
+sudo touch "$HOME_DIR/.hushlogin"
+printf '' | sudo tee /etc/motd         > /dev/null
+printf '' | sudo tee /etc/issue        > /dev/null
+printf '' | sudo tee /etc/issue.net    > /dev/null
+ok "Login messages suppressed (motd / issue)"
+
+# ─── journald: ללא פלט לקונסול ─────────────
+sudo mkdir -p /etc/systemd/journald.conf.d/
+sudo tee /etc/systemd/journald.conf.d/advision-quiet.conf > /dev/null << 'EOF'
+[Journal]
+Storage=volatile
+ForwardToConsole=no
+MaxLevelConsole=emerg
+EOF
+ok "journald: console output suppressed"
+
+# ─── systemd: ללא status messages ───────────
+sudo mkdir -p /etc/systemd/system.conf.d/
+sudo tee /etc/systemd/system.conf.d/advision-quiet.conf > /dev/null << 'EOF'
+[Manager]
+StatusUnitFormat=none
+ShowStatus=no
+EOF
+ok "systemd: status messages suppressed"
+
+# ─── הסרת שורות dmesg מהקונסול ─────────────
+# (loglevel=0 בcmdline מטפל בזה בשלב 6)
 ok "Cursor hiding ready (unclutter-xfixes)"
 
 # =============================================
@@ -522,28 +553,78 @@ sudo pip3 install pillow --break-system-packages -q 2>/dev/null
 
 sudo python3 -c "
 from PIL import Image, ImageDraw, ImageFont
-import os
-T='$THEME_DIR'
-Image.new('RGB',(1920,1080),(13,27,42)).save(f'{T}/background.png')
-fps=['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-     '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf']
-fm=fs=None
-for fp in fps:
-    if os.path.exists(fp): fm=ImageFont.truetype(fp,96); fs=ImageFont.truetype(fp,28); break
-if not fm: fm=fs=ImageFont.load_default()
-probe=Image.new('RGBA',(1,1)); d=ImageDraw.Draw(probe)
-bb=d.textbbox((0,0),'ADVISION',font=fm); tw=bb[2]-bb[0]; th=bb[3]-bb[1]
-sb=d.textbbox((0,0),'Digital Signage',font=fs); sw=sb[2]-sb[0]
-pad=30; lw=max(tw,sw)+pad*2; lh=th+50+pad*2
-logo=Image.new('RGBA',(lw,lh),(0,0,0,0)); dl=ImageDraw.Draw(logo)
-ab=dl.textbbox((0,0),'ADV',font=fm); aw=ab[2]-ab[0]
-dl.text((pad,pad),'ADV',fill=(220,230,240,255),font=fm)
-dl.text((pad+aw,pad),'ISION',fill=(76,201,240,255),font=fm)
-dl.text(((lw-sw)//2,pad+th+14),'Digital Signage',fill=(80,120,160,200),font=fs)
+import os, math
+
+T = '$THEME_DIR'
+W, H = 1920, 1080
+
+# ── Background: dark navy with subtle centered radial glow ──
+bg = Image.new('RGB', (W, H), (10, 22, 40))
+d_bg = ImageDraw.Draw(bg)
+for i in range(60, 0, -1):
+    alpha = int(12 * (1 - i / 60))
+    ellipse = [W//2 - i*10, H//2 - i*7, W//2 + i*10, H//2 + i*7]
+    d_bg.ellipse(ellipse, fill=(10 + alpha, 28 + alpha, 55 + alpha))
+bg.save(f'{T}/background.png')
+
+# ── Font setup ──
+font_paths = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+]
+f_lg = f_md = None
+for fp in font_paths:
+    if os.path.exists(fp):
+        f_lg = ImageFont.truetype(fp, 108)
+        f_md = ImageFont.truetype(fp, 30)
+        break
+if not f_lg:
+    f_lg = f_md = ImageFont.load_default()
+
+# ── Logo: ADV(white) + ISION(cyan) + 'Digital Signage' subtitle ──
+probe = Image.new('RGBA', (1, 1))
+dp = ImageDraw.Draw(probe)
+adv_bb   = dp.textbbox((0, 0), 'ADV',            font=f_lg)
+ision_bb = dp.textbbox((0, 0), 'ISION',           font=f_lg)
+sub_bb   = dp.textbbox((0, 0), 'Digital Signage', font=f_md)
+adv_w  = adv_bb[2]   - adv_bb[0]
+text_w = (ision_bb[2] - ision_bb[0]) + adv_w
+text_h = adv_bb[3]   - adv_bb[1]
+sub_w  = sub_bb[2]   - sub_bb[0]
+sub_h  = sub_bb[3]   - sub_bb[1]
+pad = 40
+lw = max(text_w, sub_w) + pad * 2
+lh = text_h + 22 + sub_h + pad * 2
+logo = Image.new('RGBA', (lw, lh), (0, 0, 0, 0))
+dl = ImageDraw.Draw(logo)
+tx = (lw - text_w) // 2
+dl.text((tx,          pad), 'ADV',            fill=(215, 228, 242, 255), font=f_lg)
+dl.text((tx + adv_w,  pad), 'ISION',          fill=(76,  201, 240, 255), font=f_lg)
+dl.text(((lw - sub_w) // 2, pad + text_h + 14), 'Digital Signage', fill=(75, 125, 165, 210), font=f_md)
 logo.save(f'{T}/logo.png')
-Image.new('RGB',(1,1),(76,201,240)).save(f'{T}/bar_fill.png')
-Image.new('RGB',(1,1),(25,45,65)).save(f'{T}/bar_bg.png')
-print('  Images generated')
+
+# ── Progress bar assets (1×1 px, scaled by the Plymouth script) ──
+Image.new('RGB', (1, 1), (18, 38, 60)).save(f'{T}/bar_bg.png')
+Image.new('RGB', (1, 1), (76, 201, 240)).save(f'{T}/bar_fill.png')
+
+# ── Animated loading dots: 4 frames ──
+# Frame 0 = all dim  |  Frames 1-3 = one dot lit sequentially
+DOT_W, DOT_H = 96, 20
+for frame in range(4):
+    img = Image.new('RGBA', (DOT_W, DOT_H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    active = (frame - 1) % 3 if frame > 0 else -1
+    for i in range(3):
+        cx = 16 + i * 32
+        cy = DOT_H // 2
+        lit = (i == active)
+        r   = 7 if lit else 4
+        col = (76, 201, 240, 255) if lit else (28, 62, 95, 200)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=col)
+    img.save(f'{T}/dot{frame + 1}.png')
+
+print('  Plymouth images generated successfully')
 " 2>&1 | sed 's/^/  /'
 
 sudo tee "$THEME_DIR/advision.plymouth" > /dev/null << 'EOF'
@@ -558,28 +639,90 @@ ScriptFile=/usr/share/plymouth/themes/advision/advision.script
 EOF
 
 sudo tee "$THEME_DIR/advision.script" > /dev/null << 'PLEOF'
+// ═══════════════════════════════════════════════
+//  Advision Digital Signage — Plymouth Boot Theme
+// ═══════════════════════════════════════════════
+
 screen_w = Window.GetWidth();
 screen_h = Window.GetHeight();
-bg = Sprite(Image("background.png"));
+
+// ── Background (scaled to fill any resolution) ──
+bg_src = Image("background.png");
+bg = Sprite(bg_src.Scale(screen_w, screen_h));
 bg.SetX(0); bg.SetY(0); bg.SetZ(-100);
+
+// ── Logo ──
 logo_img = Image("logo.png");
-logo_w = logo_img.GetWidth(); logo_h = logo_img.GetHeight();
-logo = Sprite(logo_img);
-logo.SetX(Math.Int(screen_w/2 - logo_w/2));
-logo.SetY(Math.Int(screen_h/2 - logo_h/2 - 50));
-logo.SetZ(10);
-bar_w=500; bar_h=10;
-bar_x=Math.Int(screen_w/2 - bar_w/2);
-bar_y=Math.Int(screen_h/2 + logo_h/2 + 20);
-bar_bg_spr=Sprite(Image("bar_bg.png").Scale(bar_w,bar_h));
-bar_bg_spr.SetX(bar_x); bar_bg_spr.SetY(bar_y); bar_bg_spr.SetZ(9);
-bar_1px=Image("bar_fill.png");
-prog=Sprite(); prog.SetX(bar_x); prog.SetY(bar_y); prog.SetZ(10); prog.SetOpacity(0);
-fun ProgressCallback(d,p){
-    w=Math.Int(bar_w*p); if(w<4){w=4;}
-    prog.SetImage(bar_1px.Scale(w,bar_h)); prog.SetOpacity(1);
+logo_w   = logo_img.GetWidth();
+logo_h   = logo_img.GetHeight();
+logo_spr = Sprite(logo_img);
+logo_spr.SetX(Math.Int((screen_w - logo_w) / 2));
+logo_spr.SetY(Math.Int(screen_h / 2 - logo_h / 2 - 70));
+logo_spr.SetZ(10);
+
+// ── Progress bar ──
+bar_w = Math.Int(screen_w * 0.38);
+if (bar_w > 680) { bar_w = 680; }
+if (bar_w < 320) { bar_w = 320; }
+bar_h = 7;
+bar_x = Math.Int((screen_w - bar_w) / 2);
+bar_y = Math.Int(screen_h / 2 + logo_h / 2 + 40);
+
+bar_track = Sprite(Image("bar_bg.png").Scale(bar_w, bar_h));
+bar_track.SetX(bar_x); bar_track.SetY(bar_y); bar_track.SetZ(9);
+
+bar_fill_1px = Image("bar_fill.png");
+bar_spr = Sprite();
+bar_spr.SetX(bar_x); bar_spr.SetY(bar_y); bar_spr.SetZ(10);
+
+// ── Animated dots (4 frames, ~3 fps) ──
+dot_img_1 = Image("dot1.png");
+dot_img_2 = Image("dot2.png");
+dot_img_3 = Image("dot3.png");
+dot_img_4 = Image("dot4.png");
+
+dot_spr = Sprite(dot_img_1);
+dot_spr.SetX(Math.Int((screen_w - dot_img_1.GetWidth()) / 2));
+dot_spr.SetY(bar_y + bar_h + 20);
+dot_spr.SetZ(10);
+
+// ── State ──
+boot_p  = 0;
+disp_p  = 0.02;   // start with a tiny sliver visible
+tick    = 0;
+d_frame = 0;
+
+// ── Refresh: called ~30×/sec by Plymouth ──
+fun Refresh() {
+    tick++;
+
+    // Smooth interpolation toward boot_p, plus a slow background creep
+    disp_p = disp_p + (boot_p - disp_p) * 0.07 + 0.00035;
+    if (disp_p > 1) { disp_p = 1; }
+
+    // Render bar
+    fill_w = Math.Int(bar_w * disp_p);
+    if (fill_w < bar_h) { fill_w = bar_h; }
+    if (fill_w > bar_w) { fill_w = bar_w; }
+    bar_spr.SetImage(bar_fill_1px.Scale(fill_w, bar_h));
+    bar_spr.SetOpacity(1);
+
+    // Rotate dots ~3 fps  (every 10 ticks at 30 fps)
+    if (tick % 10 == 0) {
+        d_frame = (d_frame + 1) % 4;
+        if (d_frame == 0) { dot_spr.SetImage(dot_img_1); dot_spr.SetX(Math.Int((screen_w - dot_img_1.GetWidth()) / 2)); }
+        if (d_frame == 1) { dot_spr.SetImage(dot_img_2); dot_spr.SetX(Math.Int((screen_w - dot_img_2.GetWidth()) / 2)); }
+        if (d_frame == 2) { dot_spr.SetImage(dot_img_3); dot_spr.SetX(Math.Int((screen_w - dot_img_3.GetWidth()) / 2)); }
+        if (d_frame == 3) { dot_spr.SetImage(dot_img_4); dot_spr.SetX(Math.Int((screen_w - dot_img_4.GetWidth()) / 2)); }
+    }
 }
-Plymouth.SetBootProgressFunction(ProgressCallback);
+
+fun BootProgress(duration, progress) {
+    boot_p = progress;
+}
+
+Plymouth.SetRefreshFunction(Refresh);
+Plymouth.SetBootProgressFunction(BootProgress);
 PLEOF
 
 ok "Theme files created"
@@ -592,21 +735,39 @@ sudo update-initramfs -u -k all 2>/dev/null \
     && ok "initramfs rebuilt" \
     || warn "initramfs failed — Plymouth may not show on boot"
 
-# cmdline.txt
+# ─── cmdline.txt: suppress all visible boot output ────────────
 CMDLINE="/boot/firmware/cmdline.txt"
 [ -f "$CMDLINE" ] || CMDLINE="/boot/cmdline.txt"
-if [ -f "$CMDLINE" ] && ! grep -q "splash" "$CMDLINE"; then
-    sudo sed -i 's/$/ quiet splash loglevel=0 logo.nologo/' "$CMDLINE"
-    ok "cmdline.txt: quiet splash added"
+if [ -f "$CMDLINE" ]; then
+    # הוסף כל פרמטר בנפרד רק אם לא קיים (idempotent)
+    for PARAM in \
+        "quiet" \
+        "splash" \
+        "loglevel=0" \
+        "logo.nologo" \
+        "vt.global_cursor_default=0" \
+        "systemd.show_status=false" \
+        "plymouth.ignore-serial-consoles" \
+        "rd.systemd.show_status=false"
+    do
+        grep -q "$PARAM" "$CMDLINE" \
+            || sudo sed -i "s/$/ $PARAM/" "$CMDLINE"
+    done
+    ok "cmdline.txt: boot messages fully suppressed"
+else
+    warn "cmdline.txt not found — skipping kernel parameter setup"
 fi
 
-# config.txt
+# ─── config.txt: כיבוי לוגו הקשת של Raspberry Pi ─────────────
 CONFIG="/boot/firmware/config.txt"
 [ -f "$CONFIG" ] || CONFIG="/boot/config.txt"
 if [ -f "$CONFIG" ]; then
     grep -q "disable_splash" "$CONFIG" \
         || echo "disable_splash=1" | sudo tee -a "$CONFIG" > /dev/null
-    ok "config.txt: rainbow splash disabled"
+    # וודא שdtoverlay=vc4-kms-v3d קיים (נדרש ל-Plymouth עם KMS)
+    grep -q "vc4-kms-v3d" "$CONFIG" \
+        || echo "dtoverlay=vc4-kms-v3d" | sudo tee -a "$CONFIG" > /dev/null
+    ok "config.txt: rainbow splash disabled, KMS overlay verified"
 fi
 
 # =============================================
