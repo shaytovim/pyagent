@@ -10,6 +10,7 @@ PI_USER=$(whoami | tr -d '\r')
 HOME_DIR="/home/$PI_USER"
 PY_FILE="kiosk_manager.py"
 HTML_FILE="wifi_setup.html"
+SCREEN_FILE="wifi_screen.html"
 THEME_DIR="/usr/share/plymouth/themes/advision"
 
 step() { echo -e "\n${BOLD}${BLUE}[$1/6]${NC} $2"; }
@@ -435,7 +436,7 @@ python3 -c "
 try:
     import qrcode
     qr = qrcode.QRCode(version=2, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
-    qr.add_data('WIFI:T:nopass;S:Advision-Setup;;')
+    qr.add_data('WIFI:T:WPA;S:Advision-Setup;P:advision1;;')
     qr.make(fit=True)
     qr.make_image(fill_color='#0d1b2a', back_color='white').save('$HOME_DIR/wifi_qr.png')
     print('  QR saved')
@@ -443,6 +444,22 @@ except Exception as e:
     print(f'  QR skipped: {e}')
 "
 ok "QR Code ready"
+
+# --- wifi_screen.html (TV display) ---
+if wget -q --timeout=15 -O "$HOME_DIR/$SCREEN_FILE" "$SERVER_URL/$SCREEN_FILE" 2>/dev/null \
+   && grep -q "Advision" "$HOME_DIR/$SCREEN_FILE" 2>/dev/null; then
+    ok "wifi_screen.html downloaded from server"
+else
+    warn "Server unavailable — copying wifi_screen.html from local install"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/$SCREEN_FILE" ]; then
+        cp "$SCRIPT_DIR/$SCREEN_FILE" "$HOME_DIR/$SCREEN_FILE"
+        ok "wifi_screen.html copied from installer directory"
+    else
+        warn "wifi_screen.html not found — TV display will fall back to wifi_setup.html"
+        cp "$HOME_DIR/$HTML_FILE" "$HOME_DIR/$SCREEN_FILE" 2>/dev/null || true
+    fi
+fi
 
 # =============================================
 # [4/6] Auto-Start (autologin + bash_profile)

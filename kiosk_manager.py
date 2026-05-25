@@ -30,7 +30,7 @@ HOTSPOT_SSID = "Advision-Setup"
 HOTSPOT_CON  = "advision-hotspot"
 HOTSPOT_IP   = "10.42.0.1"
 PANEL_URL    = f"https://panel.advision360.co.il/display?screenId={SCREEN_ID}&prod=true"
-WIFI_TV_URL  = f"http://localhost:{PORTAL_PORT}/wifi_setup.html"
+WIFI_TV_URL  = f"http://localhost:{PORTAL_PORT}/wifi_screen.html"
 
 # ===================== לוגינג =====================
 os.makedirs(HOME_DIR, exist_ok=True)
@@ -73,7 +73,7 @@ class PortalHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
         else:
             # Captive portal redirect — phones that try any URL get the portal
-            if not self.path.startswith("/wifi_setup") and not self.path.startswith("/wifi_qr"):
+            if not self.path.startswith("/wifi_setup") and not self.path.startswith("/wifi_screen") and not self.path.startswith("/wifi_qr"):
                 self.send_response(302)
                 self.send_header("Location", f"http://{HOTSPOT_IP}:{PORTAL_PORT}/wifi_setup.html")
                 self.end_headers()
