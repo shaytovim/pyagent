@@ -112,7 +112,7 @@ HOTSPOT_SSID= "Advision-Setup"
 HOTSPOT_CON = "advision-hotspot"
 HOTSPOT_IP  = "10.42.0.1"
 PANEL_URL   = f"https://panel.advision360.co.il/display?screenId={SCREEN_ID}&prod=true"
-WIFI_TV_URL = f"http://localhost:{PORTAL_PORT}/wifi_setup.html"
+WIFI_TV_URL = f"http://localhost:{PORTAL_PORT}/wifi_screen.html"
 
 os.makedirs(HOME_DIR, exist_ok=True)
 logging.basicConfig(level=logging.INFO,
@@ -136,7 +136,7 @@ class PortalHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/status"):  self._status()
         elif self.path in ("/","index.html"):
             self.path="/wifi_setup.html"; super().do_GET()
-        elif not self.path.startswith("/wifi_setup") and not self.path.startswith("/wifi_qr"):
+        elif not self.path.startswith("/wifi_setup") and not self.path.startswith("/wifi_screen") and not self.path.startswith("/wifi_qr"):
             self.send_response(302)
             self.send_header("Location",f"http://{HOTSPOT_IP}:{PORTAL_PORT}/wifi_setup.html")
             self.end_headers()
@@ -445,20 +445,159 @@ except Exception as e:
 "
 ok "QR Code ready"
 
-# --- wifi_screen.html (TV display) ---
+# --- wifi_screen.html (TV display with QR code) ---
 if wget -q --timeout=15 -O "$HOME_DIR/$SCREEN_FILE" "$SERVER_URL/$SCREEN_FILE" 2>/dev/null \
    && grep -q "Advision" "$HOME_DIR/$SCREEN_FILE" 2>/dev/null; then
     ok "wifi_screen.html downloaded from server"
 else
-    warn "Server unavailable — copying wifi_screen.html from local install"
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [ -f "$SCRIPT_DIR/$SCREEN_FILE" ]; then
-        cp "$SCRIPT_DIR/$SCREEN_FILE" "$HOME_DIR/$SCREEN_FILE"
-        ok "wifi_screen.html copied from installer directory"
-    else
-        warn "wifi_screen.html not found — TV display will fall back to wifi_setup.html"
-        cp "$HOME_DIR/$HTML_FILE" "$HOME_DIR/$SCREEN_FILE" 2>/dev/null || true
-    fi
+    warn "Server unavailable — creating wifi_screen.html locally (embedded)"
+    cat > "$HOME_DIR/$SCREEN_FILE" << 'SCREENEOF'
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Advision — WiFi Setup Display</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#070f1c;--bg2:#0d1b2a;--card:#111e2d;--border:#1a2f45;--accent:#4cc9f0;--accent2:#6e40c9;--success:#22d3a5;--text:#e2e8f0;--muted:#4a6880;--step-bg:rgba(76,201,240,0.06)}
+html,body{width:100%;height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,sans-serif;display:flex;flex-direction:column}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:.9rem 3rem;border-bottom:1px solid var(--border);background:rgba(13,27,42,.9);backdrop-filter:blur(8px);flex-shrink:0}
+.logo{font-size:1.7rem;font-weight:900;letter-spacing:4px;color:#d0dce8}
+.logo span{color:var(--accent)}
+.tagline{font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-top:.15rem}
+.clock{font-size:2rem;font-weight:700;color:var(--accent);letter-spacing:2px;font-variant-numeric:tabular-nums}
+.date-str{font-size:.75rem;color:var(--muted);text-align:left;letter-spacing:1px;margin-top:.2rem}
+.main{flex:1;display:flex;align-items:stretch;overflow:hidden}
+.panel-qr{width:44%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.6rem;padding:2rem 2.5rem;border-left:1px solid var(--border);background:linear-gradient(160deg,#0a1525 0%,#0d1b2a 100%)}
+.qr-label-top{font-size:1.05rem;font-weight:700;color:var(--accent);letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:.6rem}
+.qr-label-top::before,.qr-label-top::after{content:'';flex:1;height:1px;background:var(--border)}
+.qr-frame{position:relative;background:#fff;border-radius:22px;padding:18px;box-shadow:0 0 0 3px var(--bg2),0 0 0 5px var(--accent),0 0 60px rgba(76,201,240,.35),0 0 120px rgba(76,201,240,.15);animation:pulse-glow 3s ease-in-out infinite}
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 0 3px var(--bg2),0 0 0 5px var(--accent),0 0 50px rgba(76,201,240,.3),0 0 100px rgba(76,201,240,.1)}50%{box-shadow:0 0 0 3px var(--bg2),0 0 0 5px var(--accent),0 0 80px rgba(76,201,240,.55),0 0 150px rgba(76,201,240,.25)}}
+.qr-frame::before,.qr-frame::after{content:'';position:absolute;width:20px;height:20px;border-color:var(--accent2);border-style:solid}
+.qr-frame::before{top:-8px;right:-8px;border-width:3px 3px 0 0;border-radius:0 4px 0 0}
+.qr-frame::after{bottom:-8px;left:-8px;border-width:0 0 3px 3px;border-radius:0 0 0 4px}
+.qr-frame img{width:260px;height:260px;display:block;border-radius:8px;image-rendering:pixelated}
+.wifi-badge{background:var(--card);border:1px solid var(--border);border-radius:50px;padding:.6rem 2rem;text-align:center}
+.wifi-badge .net-name{font-size:1.3rem;font-weight:800;color:var(--accent);letter-spacing:1px}
+.wifi-badge .net-type{font-size:.7rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:.15rem}
+.scan-hint{font-size:.9rem;color:var(--muted);display:flex;align-items:center;gap:.5rem}
+.scan-hint .arrow{animation:bounce-left 1.2s ease-in-out infinite}
+@keyframes bounce-left{0%,100%{transform:translateX(0)}50%{transform:translateX(-5px)}}
+.panel-steps{flex:1;display:flex;flex-direction:column;justify-content:center;padding:2rem 3.5rem;gap:1.3rem}
+.section-title{font-size:1.8rem;font-weight:800;color:var(--text);line-height:1.3;margin-bottom:.2rem}
+.section-title span{color:var(--accent)}
+.section-sub{font-size:.9rem;color:var(--muted);margin-bottom:.8rem}
+.step{display:flex;align-items:center;gap:1.2rem;background:var(--step-bg);border:1px solid var(--border);border-radius:14px;padding:1rem 1.4rem;transition:border-color .3s;position:relative;overflow:hidden}
+.step::before{content:'';position:absolute;right:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:0;transition:opacity .3s}
+.step.active{border-color:rgba(76,201,240,.5)}
+.step.active::before{opacity:1}
+.step.done{border-color:rgba(34,211,165,.3);background:rgba(34,211,165,.04)}
+.step.done::before{background:var(--success);opacity:1}
+.step-num{width:38px;height:38px;border-radius:50%;background:var(--border);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:var(--accent);flex-shrink:0;transition:all .3s}
+.step.done .step-num{background:var(--success);border-color:var(--success);color:#0a1628}
+.step.done .step-num::after{content:'✓'}
+.step-icon{font-size:1.6rem;flex-shrink:0}
+.step-title{font-size:1rem;font-weight:700;color:var(--text)}
+.step-desc{font-size:.82rem;color:var(--muted);margin-top:.2rem;line-height:1.5}
+.statusbar{display:flex;align-items:center;justify-content:space-between;padding:.75rem 3rem;border-top:1px solid var(--border);background:rgba(13,27,42,.9);flex-shrink:0}
+.status-left{display:flex;align-items:center;gap:.8rem;font-size:.82rem;color:var(--muted)}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse-dot 2s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:.5}}
+.status-right{font-size:.8rem;color:var(--muted)}
+.status-right strong{color:#6b8cad}
+@keyframes ring-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.ring{position:absolute;inset:-12px;border-radius:50%;border:2px solid transparent;border-top-color:var(--accent);border-right-color:rgba(76,201,240,.3);animation:ring-spin 4s linear infinite;pointer-events:none}
+.qr-frame-wrap{position:relative;display:inline-flex}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 40% at 20% 50%,rgba(76,201,240,.04) 0%,transparent 70%),radial-gradient(ellipse 40% 50% at 80% 50%,rgba(110,64,201,.04) 0%,transparent 70%);z-index:0}
+.topbar,.main,.statusbar{position:relative;z-index:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div>
+    <div class="logo">ADV<span>ISION</span></div>
+    <div class="tagline">Digital Signage</div>
+  </div>
+  <div style="text-align:left">
+    <div class="clock" id="clock">00:00:00</div>
+    <div class="date-str" id="dateval"></div>
+  </div>
+</div>
+<div class="main">
+  <div class="panel-qr">
+    <div class="qr-label-top">סרוק להתחבר</div>
+    <div class="qr-frame-wrap">
+      <div class="ring"></div>
+      <div class="qr-frame">
+        <img src="/wifi_qr.png" alt="WiFi QR Code" id="qr-img"
+             onerror="this.style.display='none';document.getElementById('qr-fallback').style.display='flex'">
+        <div id="qr-fallback" style="display:none;width:260px;height:260px;align-items:center;justify-content:center;flex-direction:column;gap:1rem;text-align:center;padding:1rem">
+          <div style="font-size:3rem">📶</div>
+          <div style="font-size:.9rem;font-weight:700;color:#4a6880">Advision-Setup</div>
+        </div>
+      </div>
+    </div>
+    <div class="wifi-badge">
+      <div class="net-name">📶 Advision-Setup</div>
+      <div class="net-type">רשת WiFi לחיבור · פתוח</div>
+    </div>
+    <div class="scan-hint"><span class="arrow">←</span><span>סרוק עם מצלמת הטלפון</span></div>
+  </div>
+  <div class="panel-steps">
+    <div class="section-title">איך <span>מגדירים</span> WiFi?</div>
+    <div class="section-sub">עקוב אחר השלבים הבאים — תהליך של פחות מדקה</div>
+    <div class="step" id="s1">
+      <div class="step-num">1</div><div class="step-icon">📷</div>
+      <div class="step-body"><div class="step-title">סרוק את ה-QR Code</div>
+      <div class="step-desc">פתח מצלמה בטלפון וסרוק את הקוד משמאל<br>הטלפון יתחבר אוטומטית לרשת הזמנית</div></div>
+    </div>
+    <div class="step" id="s2">
+      <div class="step-num">2</div><div class="step-icon">🌐</div>
+      <div class="step-body"><div class="step-title">פורטל הגדרות ייפתח אוטומטית</div>
+      <div class="step-desc">לחלופין, פתח דפדפן ועבור ל: <strong style="color:#4cc9f0;letter-spacing:1px">10.42.0.1:8080</strong></div></div>
+    </div>
+    <div class="step" id="s3">
+      <div class="step-num">3</div><div class="step-icon">📋</div>
+      <div class="step-body"><div class="step-title">בחר את רשת ה-WiFi הביתית שלך</div>
+      <div class="step-desc">בחר מהרשימה את הרשת שברצונך להתחבר אליה<br>והזן את הסיסמה במידת הצורך</div></div>
+    </div>
+    <div class="step" id="s4">
+      <div class="step-num">4</div><div class="step-icon">✅</div>
+      <div class="step-body"><div class="step-title">המסך יחזור לפעולה אוטומטית</div>
+      <div class="step-desc">לאחר חיבור מוצלח, תצוגת הדיגיטל תעלה מחדש<br>אין צורך בפעולה נוספת מצידך</div></div>
+    </div>
+  </div>
+</div>
+<div class="statusbar">
+  <div class="status-left"><div class="pulse-dot"></div><span>ממתין לחיבור WiFi<span id="waiting-dots"></span></span></div>
+  <div class="status-right">כניסה ידנית לפורטל: <strong>http://10.42.0.1:8080</strong></div>
+</div>
+<script>
+function tick(){
+  const now=new Date();
+  const hh=String(now.getHours()).padStart(2,'0');
+  const mm=String(now.getMinutes()).padStart(2,'0');
+  const ss=String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent=`${hh}:${mm}:${ss}`;
+  const days=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  const months=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  document.getElementById('dateval').textContent=
+    `יום ${days[now.getDay()]} · ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+}
+tick(); setInterval(tick,1000);
+let dotCount=0;
+setInterval(()=>{dotCount=(dotCount+1)%4;document.getElementById('waiting-dots').textContent='.'.repeat(dotCount);},500);
+const steps=['s1','s2','s3','s4'];let cur=0;
+function hl(){steps.forEach((id,i)=>{const e=document.getElementById(id);e.classList.remove('active','done');if(i<cur)e.classList.add('done');if(i===cur)e.classList.add('active');});cur=(cur+1)%steps.length;}
+hl();setInterval(hl,2500);
+document.getElementById('qr-img').addEventListener('error',function(){setTimeout(()=>{this.src='/wifi_qr.png?t='+Date.now();},5000);});
+</script>
+</body>
+</html>
+SCREENEOF
+    ok "wifi_screen.html created locally (embedded)"
 fi
 
 # =============================================
