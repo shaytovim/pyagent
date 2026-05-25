@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advision — הגדרת WiFi</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; cursor:none; }
+body {
+  background:#0d1b2a; color:#fff;
+  font-family:'Segoe UI',Arial,sans-serif;
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:2rem; overflow-x:hidden;
+}
+
+/* ===== לוגו ===== */
+.logo { font-size:1.5rem; font-weight:800; letter-spacing:3px;
+        text-transform:uppercase; color:#e0e0e0; margin-bottom:.3rem; }
+.logo span { color:#4cc9f0; }
+.tagline { font-size:.85rem; color:#3a5570; letter-spacing:2px;
+           text-transform:uppercase; margin-bottom:2rem; }
+
+/* ===== layout ===== */
+.card {
+  background:#111e2d; border:1px solid #1e3349;
+  border-radius:16px; padding:2rem; width:100%; max-width:480px;
+  box-shadow:0 8px 40px rgba(0,0,0,.4);
+}
+
+h2 { font-size:1.4rem; font-weight:700; margin-bottom:.4rem; color:#fff; }
+.subtitle { font-size:.9rem; color:#4a6080; margin-bottom:1.5rem; }
+
+/* hotspot badge */
+.hotspot-badge {
+  background:#0d2238; border:2px solid #4cc9f0;
+  border-radius:50px; padding:.5rem 1.4rem;
+  font-size:1.3rem; font-weight:700; color:#4cc9f0;
+  display:inline-block; margin-bottom:1.8rem; letter-spacing:1px;
+}
+
+/* divider */
+.divider {
+  display:flex; align-items:center; gap:.8rem;
+  color:#2a4060; font-size:.8rem; margin-bottom:1.4rem;
+}
+.divider::before,.divider::after {
+  content:''; flex:1; height:1px; background:#1e3349;
+}
+
+/* ===== network list ===== */
+#network-list { display:flex; flex-direction:column; gap:.6rem; margin-bottom:1.2rem; }
+
+.net-item {
+  display:flex; align-items:center; gap:.8rem;
+  background:#0d2238; border:1px solid #1e3349; border-radius:10px;
+  padding:.75rem 1rem; cursor:pointer; transition:border-color .2s,background .2s;
+  user-select:none;
+}
+.net-item:hover, .net-item.selected {
+  border-color:#4cc9f0; background:#0f283d;
+}
+.net-ssid { flex:1; font-size:1rem; font-weight:500; }
+.net-signal { display:flex; align-items:flex-end; gap:2px; height:16px; }
+.net-signal span {
+  width:4px; background:#4cc9f0; border-radius:1px;
+  opacity:.25; transition:opacity .2s;
+}
+.net-signal span.on { opacity:1; }
+.net-lock { font-size:.9rem; color:#4a6080; }
+
+/* ===== password section ===== */
+#pwd-section {
+  display:none; margin-bottom:1.2rem;
+  animation:slideIn .2s ease;
+}
+@keyframes slideIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+
+.pwd-label { font-size:.85rem; color:#6b8cad; margin-bottom:.5rem; }
+.pwd-row { display:flex; gap:.6rem; }
+#pwd-input {
+  flex:1; background:#0d2238; border:1px solid #1e3349; border-radius:8px;
+  padding:.65rem .9rem; color:#fff; font-size:1rem; outline:none;
+  transition:border-color .2s;
+}
+#pwd-input:focus { border-color:#4cc9f0; }
+
+/* ===== buttons ===== */
+.btn {
+  padding:.65rem 1.4rem; border-radius:8px; border:none;
+  font-size:.95rem; font-weight:600; cursor:pointer; transition:opacity .2s;
+}
+.btn:hover { opacity:.85; }
+.btn-primary { background:#4cc9f0; color:#0d1b2a; }
+.btn-secondary { background:#1e3349; color:#9ab; }
+
+#connect-btn {
+  width:100%; padding:.8rem; font-size:1rem; font-weight:700;
+  background:#4cc9f0; color:#0d1b2a; border:none; border-radius:10px;
+  cursor:pointer; transition:opacity .2s; display:none;
+}
+#connect-btn:hover { opacity:.85; }
+
+/* ===== status ===== */
+#status-box {
+  display:none; text-align:center; padding:1.2rem;
+  border-radius:10px; margin-top:.8rem;
+}
+#status-box.connecting { background:rgba(76,201,240,.08); border:1px solid rgba(76,201,240,.2); }
+#status-box.success    { background:rgba(0,200,100,.08);  border:1px solid rgba(0,200,100,.3); }
+#status-box.error      { background:rgba(255,80,80,.08);  border:1px solid rgba(255,80,80,.3); }
+.status-icon { font-size:2rem; margin-bottom:.4rem; }
+.status-text { font-size:1rem; color:#c8daea; }
+
+/* ===== scan button / empty state ===== */
+#scan-btn {
+  width:100%; padding:.7rem; background:#1e3349; color:#4a6080;
+  border:1px dashed #2a4060; border-radius:10px; cursor:pointer;
+  font-size:.9rem; display:none;
+}
+#loading-msg { color:#4a6080; font-size:.9rem; text-align:center; padding:.5rem; }
+
+/* ===== phone-url (shown on TV) ===== */
+.phone-hint {
+  margin-top:1.5rem; text-align:center;
+  font-size:.8rem; color:#3a5570;
+}
+.phone-hint strong { color:#6b8cad; }
+
+/* ===== waiting bar ===== */
+.waiting { display:flex; align-items:center; gap:.6rem;
+           font-size:.85rem; color:#3a5570; margin-top:1.8rem; }
+.pulse { width:8px; height:8px; border-radius:50%; background:#4cc9f0;
+         animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.7)} }
+.dots span { animation:blink 1.4s infinite; opacity:0; }
+.dots span:nth-child(1){animation-delay:0s}
+.dots span:nth-child(2){animation-delay:.2s}
+.dots span:nth-child(3){animation-delay:.4s}
+@keyframes blink { 0%,100%{opacity:0} 40%{opacity:1} }
+
+/* ===== footer ===== */
+.footer { position:fixed; bottom:1rem; font-size:.75rem; color:#1e3349; }
+</style>
+</head>
+<body>
+
+<div class="logo">ADV<span>ISION</span></div>
+<div class="tagline">Digital Signage</div>
+
+<div class="card">
+  <h2>הגדרת חיבור WiFi</h2>
+  <p class="subtitle">חבר את הטלפון לרשת הבאה, ואז בחר את ה-WiFi שלך</p>
+
+  <div style="text-align:center">
+    <div class="hotspot-badge">📶 Advision-Setup</div>
+  </div>
+
+  <div class="divider">בחר רשת WiFi</div>
+
+  <div id="loading-msg">🔍 סורק רשתות...</div>
+  <div id="network-list"></div>
+  <button id="scan-btn" onclick="loadNetworks()">🔄 סרוק שוב</button>
+
+  <div id="pwd-section">
+    <div class="pwd-label">סיסמת WiFi עבור: <strong id="selected-ssid-label"></strong></div>
+    <div class="pwd-row">
+      <input id="pwd-input" type="password" placeholder="הזן סיסמה..." autocomplete="off">
+      <button class="btn btn-secondary" onclick="clearSelection()">ביטול</button>
+    </div>
+  </div>
+
+  <button id="connect-btn" onclick="doConnect()">התחבר ✓</button>
+
+  <div id="status-box">
+    <div class="status-icon" id="status-icon"></div>
+    <div class="status-text" id="status-text"></div>
+  </div>
+</div>
+
+<div class="phone-hint">
+  אם הפורטל לא נפתח אוטומטית, פתח דפדפן ועבור ל:
+  <strong>10.42.0.1:8080</strong>
+</div>
+
+<div class="waiting">
+  <div class="pulse"></div>
+  ממתין להגדרת חיבור
+  <span class="dots"><span>.</span><span>.</span><span>.</span></span>
+</div>
+
+<div class="footer">advision360.co.il &nbsp;|&nbsp; Digital Signage Platform</div>
+
+<script>
+let selectedSSID = null;
+
+/* ===== Signal bars ===== */
+function signalBars(sig) {
+  const bars = [25, 50, 75, 100];
+  return '<div class="net-signal">' +
+    bars.map(t => `<span style="height:${Math.round(t*0.75)}%" class="${sig >= t ? 'on' : ''}"></span>`).join('') +
+    '</div>';
+}
+
+/* ===== Load networks ===== */
+function loadNetworks() {
+  const list = document.getElementById('network-list');
+  const msg  = document.getElementById('loading-msg');
+  const btn  = document.getElementById('scan-btn');
+  list.innerHTML = '';
+  msg.style.display = 'block';
+  btn.style.display = 'none';
+
+  fetch('/api/networks')
+    .then(r => r.json())
+    .then(nets => {
+      msg.style.display = 'none';
+      if (!Array.isArray(nets) || nets.length === 0) {
+        msg.textContent = '⚠️ לא נמצאו רשתות. ';
+        msg.style.display = 'block';
+        btn.style.display = 'block';
+        return;
+      }
+      nets.forEach(n => {
+        const div = document.createElement('div');
+        div.className = 'net-item';
+        div.innerHTML =
+          `<span class="net-ssid">${escHtml(n.ssid)}</span>` +
+          signalBars(n.signal) +
+          `<span class="net-lock">${n.secured ? '🔒' : '🔓'}</span>`;
+        div.onclick = () => selectNetwork(n.ssid, n.secured);
+        list.appendChild(div);
+      });
+      btn.style.display = 'block';
+    })
+    .catch(() => {
+      msg.textContent = '⚠️ שגיאה בטעינת הרשתות. נסה שוב.';
+      msg.style.display = 'block';
+      btn.style.display = 'block';
+    });
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ===== Select network ===== */
+function selectNetwork(ssid, secured) {
+  selectedSSID = ssid;
+  document.querySelectorAll('.net-item').forEach(el => el.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+
+  document.getElementById('selected-ssid-label').textContent = ssid;
+  document.getElementById('pwd-section').style.display = secured ? 'block' : 'none';
+  document.getElementById('connect-btn').style.display  = 'block';
+
+  if (secured) {
+    setTimeout(() => document.getElementById('pwd-input').focus(), 100);
+  }
+  hideStatus();
+}
+
+function clearSelection() {
+  selectedSSID = null;
+  document.querySelectorAll('.net-item').forEach(el => el.classList.remove('selected'));
+  document.getElementById('pwd-section').style.display  = 'none';
+  document.getElementById('connect-btn').style.display  = 'none';
+  hideStatus();
+}
+
+/* ===== Connect ===== */
+function doConnect() {
+  if (!selectedSSID) return;
+  const password = document.getElementById('pwd-input').value;
+
+  showStatus('connecting', '⏳', 'מתחבר לרשת...<br><small>המסך יחזור לפעולה אוטומטית</small>');
+  document.getElementById('connect-btn').disabled = true;
+
+  fetch('/api/connect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ssid: selectedSSID, password}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.connecting || data.success) {
+      showStatus('success', '✅', 'בקשת החיבור נשלחה!<br><small>המסך יעלה תוך מספר שניות...</small>');
+    } else {
+      showStatus('error', '❌', `שגיאה: ${data.message || 'נסה שוב'}`);
+      document.getElementById('connect-btn').disabled = false;
+    }
+  })
+  .catch(() => {
+    // Connection dropped = hotspot down = probably connecting — that's good!
+    showStatus('success', '✅', 'מתחבר...<br><small>הטלפון יתחבר לרשת הביתית בקרוב</small>');
+  });
+}
+
+/* ===== Status helpers ===== */
+function showStatus(type, icon, text) {
+  const box = document.getElementById('status-box');
+  box.className = 'connecting'; // reset
+  box.className = type;
+  document.getElementById('status-icon').innerHTML = icon;
+  document.getElementById('status-text').innerHTML = text;
+  box.style.display = 'block';
+}
+function hideStatus() {
+  document.getElementById('status-box').style.display = 'none';
+}
+
+/* ===== Allow Enter key in password field ===== */
+document.getElementById('pwd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doConnect();
+});
+
+/* ===== Init ===== */
+window.addEventListener('load', () => {
+  // Enable cursor for interactive use on phone
+  document.body.style.cursor = 'auto';
+  document.querySelectorAll('*').forEach(el => el.style.cursor = '');
+  loadNetworks();
+});
+</script>
+</body>
+</html>
